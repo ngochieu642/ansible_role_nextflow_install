@@ -1,0 +1,132 @@
+---
+# tasks file for nextflow_install
+- name: Install aptitude
+  apt:
+    name: aptitude
+    state: latest
+    update_cache: true
+
+- name: Install required system packages
+  apt:
+    pkg:
+      - unzip
+      - zip
+
+- name: Download SDKMAN installer script
+  ansible.builtin.get_url:
+    url: https://get.sdkman.io
+    dest: /tmp/sdkman-install.sh
+    mode: '0755'
+
+- name: Install SDKMAN
+  ansible.builtin.shell: bash /tmp/sdkman-install.sh
+  environment:
+    SDKMAN_DIR: "{{ nextflow_install_sdkman_path }}"
+  args:
+    creates: "{{ nextflow_install_sdkman_path }}/bin/sdkman-init.sh"
+  become: true
+
+- name: Add SDKMAN and JAVA_HOME to ansible_user .bashrc
+  ansible.builtin.blockinfile:
+    path: "/home/{{ ansible_user }}/.bashrc"
+    block: |
+      export SDKMAN_DIR="{{ nextflow_install_sdkman_path }}"
+      [[ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]] && source "$SDKMAN_DIR/bin/sdkman-init.sh"
+      JAVA_HOME=$SDKMAN_DIR/candidates/java/current
+      JAVA_CMD=$SDKMAN_DIR/candidates/java/current/bin/java
+    marker: "# {mark} ANSIBLE MANAGED BLOCK SDKMAN"
+    create: true
+
+# Update .bashrc for users
+- name: Add SDKMAN and JAVA_HOME to user .bashrc
+  ansible.builtin.blockinfile:
+    path: "/home/{{ item.name }}/.bashrc"
+    block: |
+      export SDKMAN_DIR="{{ nextflow_install_sdkman_path }}"
+      [[ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]] && source "$SDKMAN_DIR/bin/sdkman-init.sh"
+      JAVA_HOME=$SDKMAN_DIR/candidates/java/current
+      JAVA_CMD=$SDKMAN_DIR/candidates/java/current/bin/java
+    marker: "# {mark} ANSIBLE MANAGED BLOCK SDKMAN"
+    create: true
+  loop: "{{ nextflow_install_users }}"
+
+- name: Install Java using SDKMAN
+  environment:
+    SDKMAN_DIR: "{{ nextflow_install_sdkman_path }}"
+  ansible.builtin.shell: |
+    source "{{ nextflow_install_sdkman_path }}/bin/sdkman-init.sh" && sdk install java {{ nextflow_install_java_version }}
+  args:
+    executable: /bin/bash
+  register: sdk_install_java_output
+
+- name: Display SDKMAN Java installation output
+  ansible.builtin.debug:
+    var: sdk_install_java_output
+
+# Only install if not already installed
+- name: Check if Nextflow binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/nextflow
+  register: nextflow_binary
+
+- name: Download Nextflow binary
+  ansible.builtin.get_url:
+    url: https://github.com/nextflow-io/nextflow/releases/download/{{ nextflow_install_nextflow_version }}/nextflow
+    dest: /usr/local/bin/nextflow
+    mode: '0755'
+  when: not nextflow_binary.stat.exists
+
+# Only install if not already installed
+- name: Check if nf-test binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/nf-test
+  register: nf_test_binary
+
+- name: Download nf-test tarball
+  ansible.builtin.get_url:
+    url: https://github.com/askimed/nf-test/releases/download/v{{ nextflow_install_nf_test_version }}/nf-test-{{ nextflow_install_nf_test_version }}.tar.gz
+    dest: /tmp/nf-test-{{ nextflow_install_nf_test_version }}.tar.gz
+  when: not nf_test_binary.stat.exists
+
+- name: Create nf-test directory
+  ansible.builtin.file:
+    path: /tmp/nf-test-{{ nextflow_install_nf_test_version }}/
+    state: directory
+  when: not nf_test_binary.stat.exists
+
+- name: Extract nf-test tarball
+  ansible.builtin.unarchive:
+    src: /tmp/nf-test-{{ nextflow_install_nf_test_version }}.tar.gz
+    dest: /tmp/nf-test-{{ nextflow_install_nf_test_version }}/
+    remote_src: yes
+  when: not nf_test_binary.stat.exists
+
+- name: Move nf-test binary to /usr/local/bin/
+  ansible.builtin.command: mv /tmp/nf-test-{{ nextflow_install_nf_test_version }}/nf-test /usr/local/bin/nf-test
+  args:
+    creates: /usr/local/bin/nf-test
+  when: not nf_test_binary.stat.exists
+
+- name: Construct a list to tell if nf-test.jar already exists in user's home directory
+  ansible.builtin.stat:
+    path: "/home/{{ item.name }}/.nf-test/nf-test.jar"
+  loop: "{{ nextflow_install_users }}"
+  register: nf_test_jar_status
+
+- name: Ensure .nf-test directory exists in users' home
+  ansible.builtin.file:
+    path: "/home/{{ item.name }}/.nf-test"
+    state: directory
+  loop: "{{ nextflow_install_users }}"
+
+- name: Copy nf-test.jar to user's home directory
+  ansible.builtin.copy:
+    src: /tmp/nf-test-{{ nextflow_install_nf_test_version }}/nf-test.jar
+    dest: "/home/{{ item.0.name }}/.nf-test/nf-test.jar"
+    remote_src: yes
+  with_together:
+    - "{{ nextflow_install_users }}"
+    - "{{ nf_test_jar_status.results }}"
+  when:
+    - not nf_test_binary.stat.exists
+    - not item.1.stat.exists

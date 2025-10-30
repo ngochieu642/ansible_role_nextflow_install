@@ -1,6 +1,6 @@
 ---
 # vars file for nextflow_install
 nextflow_install_sdkman_path: "/opt/sdkman"
-nextflow_install_nextflow_version: "v24.04.3"
+nextflow_install_nextflow_version: "v25.10.0"
 nextflow_install_java_version: "17.0.6-amzn"
 nextflow_install_nf_test_version: "0.8.4"

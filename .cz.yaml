@@ -3,16 +3,16 @@ commitizen:
   bump_map:
     BREAKING CHANGE: MAJOR
     break: MAJOR
-    build: null
-    chore: null
+    build: PATCH
+    chore: PATCH
     ci: null
     docs: null
     feat: MINOR
     fix: PATCH
     perf: PATCH
     refactor: PATCH
-    style: null
-    test: null
+    style: PATCH
+    test: PATCH
   bump_message: "bump: version $current_version \u2192 $new_version"
   change_type_map:
     bug fix: Fix

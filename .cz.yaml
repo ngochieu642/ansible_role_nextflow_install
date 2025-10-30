@@ -34,5 +34,4 @@ commitizen:
   version: 0.1.4
   version_files:
   - .cz.yaml
-  - ./meta/main.yml
   version_scheme: semver
